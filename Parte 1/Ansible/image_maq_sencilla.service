@@ -1,0 +1,13 @@
+[Unit]
+Description= Image Sencilla
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/usr/bin/podman run -p 8080:80 -p 8443:443 imagen_maq_sencilla
+ExecStop=/usr/bin/podman stop imagen_maq_sencilla
+ExecStopPost=/usr/bin/podman rm imagen_maq_sencilla
+
+[Install]
+WantedBy=multi-user.target

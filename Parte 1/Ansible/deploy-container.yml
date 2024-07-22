@@ -1,0 +1,76 @@
+---
+- name: Despliega maquina sencilla ngix con html plano
+  hosts: maq_sencilla # La ip publica de la maquina virtual
+  become: yes
+  become_method: sudo
+  vars_files:
+    - vault.yml  # Fichero que contiene data y las claves securizadas
+  
+  vars:
+    description: "Servicio NGinx y HTML Sencillo"
+    exec_start: "/usr/bin/podman run -p 8080:80 -p 8443:443 {{ acr_image }}"
+    exec_stop: "/usr/bin/podman stop {{ acr_image }}"
+    exec_stop_post: "/usr/bin/podman rm {{ acr_image }}"
+
+  tasks: # Como no me ha dejado instalar una version de ubuntu mas nueva de la 18.04 he tenido que actualizar el repo pa instalar podman
+    - name: Actualizamos el listado de los paquetes
+      become: yes 
+      shell: apt-get update -y      
+
+    - name: Actualizalos los paquetes
+      become: yes
+      shell: apt-get upgrade -y
+
+    - name: Instalamos un paquete necesario para poder trabajar con el repositorio donde descargaremos podman
+      become: yes
+      shell: apt-get install software-properties-common -y
+
+    - name: Añadimos el repo para descargar Podman
+      become: yes
+      shell: add-apt-repository -y ppa:projectatomic/ppa    
+
+    - name: Install Podman
+      package:
+        name: podman
+        state: present
+
+    - name: Login Podman
+      command: podman login {{ acr_registry }} -u {{ acr_username }} -p {{ acr_password }}
+
+# SI EL CONTENEDOR ESTA EJECUTANDOSE LO PARAMOS Y ELIMINAMOS
+    - name: Check if container is running
+      command: podman ps -q -f name={{ acr_image }}
+      register: podman_ps_output
+      ignore_errors: true
+
+    - name: Set fact if container is running
+      set_fact:
+        container_running: "{{ podman_ps_output.stdout != '' }}"
+
+    - name: Stop Podman container if running
+      when: container_running
+      command: podman stop {{ acr_image }}      
+      ignore_errors: true
+
+    - name: Remove Podman container if it exists
+      when: container_running
+      command: podman rm {{ acr_image }}
+      ignore_errors: true
+
+    - name: Traemos imagen
+      command: podman pull {{ acr_registry }}/{{ acr_image }}
+
+    #- name: Ejecutamos el contenedor
+    #  command: podman run -d --name {{ acr_image }} -p 8080:80 -p 8443:443 {{ acr_registry }}/{{ acr_image }}    
+
+    - name: Creamos el servicio
+      template:
+        src: image_maq_sencilla.template.j2 
+        dest: /etc/systemd/system/image_maq_sencilla.service
+      notify:
+        - Reload systemd
+
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
